@@ -28,7 +28,7 @@ if "llm_manager" not in st.session_state:
 
 
 def process_uploaded_files(uploaded_files):
-    with st.spinner("Thinking..."):
+    with st.spinner("Đang xử lý..."):
         for uploaded_file in uploaded_files:
             with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
@@ -36,6 +36,11 @@ def process_uploaded_files(uploaded_files):
             
             try:
                 chunks = ingest_documents(tmp_file_path)
+                
+                # Ghi đè tên file gốc vào metadata
+                for chunk in chunks:
+                    chunk.metadata['source'] = uploaded_file.name
+                
                 st.session_state.db_manager.add_documents_to_db(chunks)
                 st.toast(f"Đã tải xong: {uploaded_file.name}")
             except Exception as e:
@@ -55,13 +60,27 @@ with st.sidebar:
     
     # Hiển thị tiêu đề lịch sử chat (Lấy câu hỏi đầu tiên làm tiêu đề)
     if len(st.session_state.messages) > 0:
-        # Lấy tin nhắn người dùng đầu tiên
         first_user_msg = next((m["content"] for m in st.session_state.messages if m["role"] == "user"), "Cuộc trò chuyện hiện tại")
-        # Rút gọn chuỗi nếu dài quá
         title = first_user_msg[:25] + "..." if len(first_user_msg) > 25 else first_user_msg
         st.button(f"{title}", use_container_width=True)
     else:
         st.caption("Chưa có cuộc trò chuyện nào.")
+
+    # Quản lý tài liệu đã upload
+    st.markdown("---")
+    st.subheader("Tài liệu đã tải")
+    
+    sources = st.session_state.db_manager.get_all_sources()
+    if sources:
+        for source in sources:
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"📄 {source}")
+            if col2.button("🗑️", key=f"del_{source}"):
+                st.session_state.db_manager.delete_by_source(source)
+                st.toast(f"Đã xóa: {source}")
+                st.rerun()
+    else:
+        st.caption("Chưa có tài liệu nào.")
 
 
 # Tình huống 1: Chưa có tin nhắn (Màn hình Welcome)
@@ -101,15 +120,22 @@ if prompt := st.chat_input("Nhập câu hỏi của bạn (ví dụ: Quy định
     with st.chat_message("assistant"):
         with st.spinner("Đang suy nghĩ..."):
             try:
-                retrieved_docs = st.session_state.db_manager.search_similar_documents(prompt, k=3)
+                # Rephrase query dựa trên lịch sử hội thoại
+                search_query = st.session_state.llm_manager.rephrase_query(
+                    prompt, 
+                    st.session_state.messages
+                )
+                
+                retrieved_docs = st.session_state.db_manager.search_similar_documents(search_query, k=3)
                 
                 if not retrieved_docs:
                     response_text = "Dựa trên các tài liệu bạn đã tải lên, tôi không tìm thấy thông tin nào để trả lời câu hỏi này."
                     source_list = []
                     st.markdown(response_text)
                 else:
-                    response_text = st.session_state.llm_manager.generate_answer(prompt, retrieved_docs)
-                    st.markdown(response_text)
+                    # Streaming response
+                    stream = st.session_state.llm_manager.generate_answer_stream(prompt, retrieved_docs)
+                    response_text = st.write_stream(stream)
                     
                     source_list = list(set([os.path.basename(doc.metadata.get('source', 'Unknown')) for doc in retrieved_docs]))
                     with st.expander("Nguồn tham khảo"):

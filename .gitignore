@@ -16,6 +16,12 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+# Chat history database
+chat_history.db
+
+# Export files
+chat_export_*.pdf
+
 #IDE files
 .vscode/
 .idea/

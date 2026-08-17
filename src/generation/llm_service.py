@@ -54,13 +54,55 @@ class LLMManager:
         # 1. Convert docs to text
         context_text = "\n\n".join([doc.page_content for doc in retrieved_docs])
 
-        # 2. Build chain in langchain: prompt -> llmm -> output
+        # 2. Build chain in langchain: prompt -> llm -> output
         chain = self.prompt_template | self.llm | self.output_parser
 
         # 3. Active 
-        print("Thinkng...")
+        print("Thinking...")
         response = chain.invoke({
             "context" : context_text,
             "question" : query
         }) 
         return response
+
+    def generate_answer_stream(self, query: str, retrieved_docs: list):
+        """Trả về generator stream thay vì text hoàn chỉnh"""
+        context_text = "\n\n".join([doc.page_content for doc in retrieved_docs])
+        chain = self.prompt_template | self.llm | self.output_parser
+
+        # Dùng stream() thay vì invoke()
+        return chain.stream({
+            "context": context_text,
+            "question": query
+        })
+
+    def rephrase_query(self, query: str, chat_history: list) -> str:
+        """Viết lại câu hỏi dựa trên lịch sử để tự đủ ngữ cảnh"""
+        if not chat_history:
+            return query  # Câu đầu tiên, không cần rephrase
+
+        # Lấy 6 tin nhắn gần nhất (3 cặp user-assistant)
+        recent_history = chat_history[-6:]
+        history_text = "\n".join([
+            f"{'Người dùng' if m['role'] == 'user' else 'Trợ lý'}: {m['content'][:200]}"
+            for m in recent_history
+        ])
+
+        rephrase_template = ChatPromptTemplate.from_template("""
+        Dựa vào lịch sử hội thoại bên dưới, hãy viết lại câu hỏi mới nhất thành một câu 
+        hỏi ĐỘC LẬP, TỰ ĐỦ NGHĨA (không cần đọc lịch sử vẫn hiểu).
+
+        CHỈ trả về câu hỏi đã viết lại, không giải thích gì thêm.
+
+        LỊCH SỬ HỘI THOẠI:
+        {history}
+
+        CÂU HỎI MỚI NHẤT:
+        {question}
+
+        CÂU HỎI ĐÃ VIẾT LẠI:
+        """)
+
+        chain = rephrase_template | self.llm | self.output_parser
+        rephrased = chain.invoke({"history": history_text, "question": query})
+        return rephrased.strip()
