@@ -1,0 +1,21 @@
+# Enviroments
+venv/
+__pycache__/
+*.pyc
+
+#API key
+.env
+
+# Folder vector DB
+chroma_db/
+vector_store/
+
+# Raw data
+data/raw/* 
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+#IDE files
+.vscode/
+.idea/
