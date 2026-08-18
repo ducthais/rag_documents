@@ -8,7 +8,7 @@ __pycache__/
 
 # Folder vector DB
 chroma_db/
-vector_store/
+/vector_store/
 
 # Raw data
 data/raw/* 
