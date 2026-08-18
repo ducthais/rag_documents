@@ -25,3 +25,4 @@ chat_export_*.pdf
 #IDE files
 .vscode/
 .idea/
+.env.example
